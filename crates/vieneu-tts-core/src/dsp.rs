@@ -95,28 +95,42 @@ pub fn trim_and_fade(
     out
 }
 
-/// Chuyển đổi mảng f32 [-1.0, 1.0] sang mảng i16 PCM chuẩn
+pub const MAX_COMPRESSION_RATIO: f64 = 1.35;
+
+/// Chuyển đổi mảng f32 sang i16 PCM với soft limiter và chống wrap-around.
 pub fn f32_to_i16_pcm(samples: &[f32]) -> Vec<i16> {
     samples
         .iter()
         .map(|&s| {
-            let clamped = s.clamp(-1.0, 1.0);
-            (clamped * 32767.0) as i16
+            let finite = if s.is_finite() { s } else { 0.0 };
+            let magnitude = finite.abs();
+            let limited = if magnitude <= 0.98 {
+                finite
+            } else {
+                let knee = 0.02;
+                let softened = 0.98 + knee * (1.0 - (-(magnitude - 0.98) / knee).exp());
+                finite.signum() * softened.min(1.0)
+            };
+            (limited.clamp(-1.0, 1.0) * 32767.0) as i16
         })
         .collect()
 }
 
+/// WSOLA bypasses changes below 3% and limits compression to 1.35x.
 pub fn wsola_time_stretch(samples: &[f32], target_len: usize, sample_rate: usize) -> Vec<f32> {
     if samples.is_empty() || target_len == 0 {
         return Vec::new();
     }
-    if target_len == samples.len() {
+    let speed_ratio = samples.len() as f64 / target_len as f64;
+    if (speed_ratio - 1.0).abs() < 0.03 {
         return samples.to_vec();
     }
     if samples.len() < 2 {
         return vec![samples[0]; target_len];
     }
 
+    let minimum_target_len = (samples.len() as f64 / MAX_COMPRESSION_RATIO).ceil() as usize;
+    let target_len = target_len.max(minimum_target_len);
     let window = samples.len().min((sample_rate / 25).max(2));
     let overlap = (window / 2).max(1);
     let synthesis_hop = window - overlap;
@@ -138,13 +152,16 @@ pub fn wsola_time_stretch(samples: &[f32], target_len: usize, sample_rate: usize
 
         for candidate in (search_start..=search_end).step_by(8) {
             let compared = overlap.min(target_len - output_start);
-            let correlation = (0..compared)
-                .step_by(8)
-                .map(|offset| {
-                    f64::from(output[output_start + offset])
-                        * f64::from(samples[candidate + offset])
-                })
-                .sum::<f64>();
+            let (mut correlation, mut output_energy, mut input_energy) = (0.0, 0.0, 0.0);
+            for offset in (0..compared).step_by(8) {
+                let outgoing = f64::from(output[output_start + offset]);
+                let incoming = f64::from(samples[candidate + offset]);
+                correlation += outgoing * incoming;
+                output_energy += outgoing * outgoing;
+                input_energy += incoming * incoming;
+            }
+            let correlation =
+                correlation / (output_energy * input_energy).sqrt().max(f64::MIN_POSITIVE);
             if correlation > best_correlation {
                 best_correlation = correlation;
                 best_source_start = candidate;
@@ -154,7 +171,12 @@ pub fn wsola_time_stretch(samples: &[f32], target_len: usize, sample_rate: usize
         let segment_len = window.min(target_len - output_start);
         let crossfade_len = overlap.min(segment_len);
         for offset in 0..crossfade_len {
-            let blend = offset as f32 / crossfade_len as f32;
+            let blend = if crossfade_len == 1 {
+                1.0
+            } else {
+                let phase = std::f32::consts::PI * offset as f32 / (crossfade_len - 1) as f32;
+                0.5 - 0.5 * phase.cos()
+            };
             let current = output[output_start + offset];
             let incoming = samples[best_source_start + offset];
             output[output_start + offset] = current * (1.0 - blend) + incoming * blend;
@@ -172,12 +194,10 @@ pub fn wsola_time_stretch(samples: &[f32], target_len: usize, sample_rate: usize
 
 /****
  * [FUNCTION]: gentle_lowpass
- * Chức năng: Bộ lọc thông thấp IIR Biquad Butterworth bậc 2 (Cutoff 10.5kHz tại sample rate 24kHz)
+ * Chức năng: Bộ lọc thông thấp IIR Biquad Butterworth bậc 2.
  * Đầu vào: samples (&[f32]), sample_rate (usize), cutoff_hz (f32)
  * Đầu ra: Vec<f32> sạch nhiễu
- * Ranh giới bảo vệ: Triệt tiêu các gai nhiễu tần số cao sát biên Nyquist (10kHz - 12kHz)
- * do Neural Vocoder sinh ra trước khi đưa qua thuật toán Time-Stretch / Anti-Bleeding,
- * bảo toàn 100% các formant tự nhiên của giọng người (< 8kHz).
+ * Cắt tần số phía trên cutoff_hz bằng biquad Butterworth bậc 2.
  ****/
 pub fn gentle_lowpass(samples: &[f32], sample_rate: usize, cutoff_hz: f32) -> Vec<f32> {
     if samples.is_empty() || sample_rate == 0 {
@@ -198,8 +218,8 @@ pub fn gentle_lowpass(samples: &[f32], sample_rate: usize, cutoff_hz: f32) -> Ve
     let sin_omega = omega.sin();
     let cos_omega = omega.cos();
 
-    // Hệ số suy giảm Butterworth: Q = 1/sqrt(2) để đảm bảo đáp ứng tần số phẳng tuyệt đối (không lồi)
-    let alpha = sin_omega * (std::f32::consts::FRAC_1_SQRT_2 * 0.5);
+    // RBJ biquad: alpha = sin(omega) / (2Q), với Q = 1/sqrt(2).
+    let alpha = sin_omega * std::f32::consts::FRAC_1_SQRT_2;
 
     let inv_a0 = 1.0 / (1.0 + alpha);
     let b0 = ((1.0 - cos_omega) * 0.5) * inv_a0;
@@ -257,7 +277,7 @@ pub fn highpass_filter(samples: &[f32], sample_rate: usize, cutoff_hz: f32) -> V
     let cos_omega = omega.cos();
 
     // Q = 1/sqrt(2) cho Butterworth maximally flat
-    let alpha = sin_omega * (std::f32::consts::FRAC_1_SQRT_2 * 0.5);
+    let alpha = sin_omega * std::f32::consts::FRAC_1_SQRT_2;
 
     let inv_a0 = 1.0 / (1.0 + alpha);
     let b0 = ((1.0 + cos_omega) * 0.5) * inv_a0;
@@ -293,9 +313,9 @@ pub fn highpass_filter(samples: &[f32], sample_rate: usize, cutoff_hz: f32) -> V
 /****
  * [FUNCTION]: vocal_clarity_filter
  * Chức năng: Chuỗi xử lý âm thanh phòng thu (Studio Vocal Shaping)
- * 1. High-pass Filter (low_cut_hz): Cắt tần số bùn < 200Hz để giọng hết ngợp/bí
- * 2. Low-pass Filter (high_cut_hz): Cắt tần số méo > 4.5kHz để triệt tiêu tiếng xẹt xẹt, è è
- * 3. Dry/Wet Blending: Hòa trộn tín hiệu đã xử lý với tín hiệu gốc theo tỷ lệ wet_ratio (mặc định 60%)
+ * 1. High-pass Filter theo low_cut_hz
+ * 2. Low-pass Filter theo high_cut_hz
+ * 3. Hòa trộn tín hiệu đã lọc với tín hiệu gốc theo wet_ratio
  ****/
 pub fn vocal_clarity_filter(
     samples: &[f32],
@@ -345,7 +365,19 @@ mod tests {
             target_len in 0usize..8192,
         ) {
             let output = wsola_time_stretch(&samples, target_len, 48_000);
-            prop_assert_eq!(output.len(), if samples.is_empty() { 0 } else { target_len });
+            let expected_len = if samples.is_empty() || target_len == 0 {
+                0
+            } else {
+                let speed_ratio = samples.len() as f64 / target_len as f64;
+                if (speed_ratio - 1.0).abs() < 0.03 {
+                    samples.len()
+                } else if speed_ratio > MAX_COMPRESSION_RATIO && samples.len() >= 2 {
+                    (samples.len() as f64 / MAX_COMPRESSION_RATIO).ceil() as usize
+                } else {
+                    target_len
+                }
+            };
+            prop_assert_eq!(output.len(), expected_len);
             prop_assert!(output.iter().all(|sample| sample.is_finite()));
         }
 
@@ -398,5 +430,121 @@ mod tests {
         let output = trim_and_fade(&vec![0.5; 100], 1_000, -45.0, 0.0, 0.01);
         assert_eq!(output.first(), Some(&0.0));
         assert_eq!(output.last(), Some(&0.0));
+    }
+
+    #[test]
+    fn wsola_bypasses_near_unity_and_caps_extreme_compression() {
+        let samples = sine_tone(48_000, 2.0, 440.0, 0.5);
+        assert_eq!(wsola_time_stretch(&samples, samples.len(), 48_000), samples);
+
+        let near_unity_len = (samples.len() as f64 / 1.02).round() as usize;
+        assert_eq!(
+            wsola_time_stretch(&samples, near_unity_len, 48_000),
+            samples
+        );
+
+        let extreme_target = samples.len() / 2;
+        let capped = wsola_time_stretch(&samples, extreme_target, 48_000);
+        assert_eq!(
+            capped.len(),
+            (samples.len() as f64 / MAX_COMPRESSION_RATIO).ceil() as usize
+        );
+    }
+
+    #[test]
+    fn wsola_preserves_sine_level_and_limits_harmonics_at_1_15x() {
+        let sample_rate = 48_000;
+        let frequency = 440.0;
+        let samples = sine_tone(sample_rate, 4.0, frequency, 0.5);
+        let target_len = (samples.len() as f64 / 1.15).round() as usize;
+        let stretched = wsola_time_stretch(&samples, target_len, sample_rate);
+        assert_eq!(stretched.len(), target_len);
+
+        let edge = sample_rate / 10;
+        let stable = &stretched[edge..stretched.len() - edge];
+        let block_rms: Vec<f32> = stable.chunks_exact(sample_rate / 100).map(rms).collect();
+        let min_rms = block_rms.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_rms = block_rms.iter().copied().fold(0.0, f32::max);
+        let mean_rms = rms(stable);
+        assert!(
+            (max_rms - min_rms) / mean_rms < 0.20,
+            "unexpected 10 ms RMS ripple: min={min_rms}, max={max_rms}, mean={mean_rms}"
+        );
+
+        let fundamental = amplitude_at(stable, frequency, sample_rate);
+        let harmonic_energy = (2..=6)
+            .map(|harmonic| amplitude_at(stable, frequency * harmonic as f32, sample_rate).powi(2))
+            .sum::<f32>()
+            .sqrt();
+        assert!(
+            harmonic_energy / fundamental < 0.15,
+            "unexpected harmonic energy ratio: {}",
+            harmonic_energy / fundamental
+        );
+    }
+
+    #[test]
+    fn butterworth_filters_have_minus_three_db_gain_at_cutoff() {
+        let sample_rate = 48_000;
+        let frequency = 1_000.0;
+        let samples = sine_tone(sample_rate, 1.0, frequency, 0.5);
+        let skip = sample_rate / 10;
+        let lowpass = gentle_lowpass(&samples, sample_rate, frequency);
+        let highpass = highpass_filter(&samples, sample_rate, frequency);
+        let input_rms = rms(&samples[skip..]);
+        let lowpass_gain = rms(&lowpass[skip..]) / input_rms;
+        let highpass_gain = rms(&highpass[skip..]) / input_rms;
+        assert!(
+            (0.68..=0.73).contains(&lowpass_gain),
+            "lowpass gain={lowpass_gain}"
+        );
+        assert!(
+            (0.68..=0.73).contains(&highpass_gain),
+            "highpass gain={highpass_gain}"
+        );
+    }
+
+    #[test]
+    fn pcm_conversion_soft_limits_without_integer_wraparound() {
+        let converted = f32_to_i16_pcm(&[-2.0, -1.0, -0.98, 0.0, 0.98, 1.0, 2.0]);
+        assert!(
+            converted
+                .iter()
+                .all(|sample| (-32767..=32767).contains(sample))
+        );
+        assert!(converted[0] < 0);
+        assert!(converted[6] > 0);
+        assert_eq!(converted[0], -converted[6]);
+        assert!(converted[4] > 0 && converted[4] < 32767);
+        assert!(converted[5] < 32767);
+    }
+
+    fn sine_tone(
+        sample_rate: usize,
+        duration_sec: f32,
+        frequency: f32,
+        amplitude: f32,
+    ) -> Vec<f32> {
+        let len = (sample_rate as f32 * duration_sec) as usize;
+        (0..len)
+            .map(|index| {
+                amplitude
+                    * (std::f32::consts::TAU * frequency * index as f32 / sample_rate as f32).sin()
+            })
+            .collect()
+    }
+
+    fn rms(samples: &[f32]) -> f32 {
+        (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
+    }
+
+    fn amplitude_at(samples: &[f32], frequency: f32, sample_rate: usize) -> f32 {
+        let (mut sin_sum, mut cos_sum) = (0.0, 0.0);
+        for (index, sample) in samples.iter().enumerate() {
+            let phase = std::f32::consts::TAU * frequency * index as f32 / sample_rate as f32;
+            sin_sum += sample * phase.sin();
+            cos_sum += sample * phase.cos();
+        }
+        2.0 * (sin_sum * sin_sum + cos_sum * cos_sum).sqrt() / samples.len() as f32
     }
 }

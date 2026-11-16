@@ -11,6 +11,7 @@ Các thay đổi đáng chú ý của workspace được ghi tại đây.
 - Nhúng `voices_v3_turbo.json` vào crate engine.
 - Thêm `TtsConfig::num_workers`, `AudioBuffer`, WAV encoding trong RAM, thống kê caption lọc và WSOLA.
 - Thêm tùy chọn `--out-dir` cho ví dụ `evaluate_vtt` để lưu WAV nghe thử.
+- Thêm ví dụ `debug_noise` xuất WAV từng tầng engine/DSP/WSOLA và kiểm tra hai voice preset.
 
 ### Thay đổi
 - Cô lập model inference và dubbing pipeline khỏi các API host `shared`/`cli_gui_form`.
@@ -20,6 +21,8 @@ Các thay đổi đáng chú ý của workspace được ghi tại đây.
 
 ### Sửa
 - Xử lý an toàn sample rate không hợp lệ và giá trị NaN/Inf trong bộ lọc DSP.
+- Sửa hệ số Q Butterworth, bỏ qua WSOLA khi chênh lệch dưới 3%, dùng crossfade Hann bổ sung và giới hạn nén tối đa 1.35x.
+- Thêm soft limiter PCM16 từ ngưỡng 0.98 và kiểm thử sin, đáp tuyến biquad, clipping.
 - Báo lỗi rõ ràng khi worker G2P trả thành công nhưng không có phonemes hoặc khi FFmpeg time-stretch thất bại.
 - Nâng `ndarray-npy` để dùng `zip` đã vá các advisory hiện hành.
 

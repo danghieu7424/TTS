@@ -14,6 +14,10 @@ nano = ["vieneu-tts-engine/nano"]
 name = "evaluate_vtt"
 required-features = ["turbo"]
 
+[[example]]
+name = "debug_noise"
+required-features = ["turbo"]
+
 [dependencies]
 anyhow.workspace = true
 vieneu-tts-core = { path = "../vieneu-tts-core" }

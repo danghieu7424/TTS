@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use vieneu_tts_core::dsp::{
-    f32_to_i16_pcm, trim_and_fade, vocal_clarity_filter, wsola_time_stretch,
+    MAX_COMPRESSION_RATIO, f32_to_i16_pcm, trim_and_fade, vocal_clarity_filter, wsola_time_stretch,
 };
 use vieneu_tts_core::events::{TtsEvent, emit};
 use vieneu_tts_core::normalizer::normalize;
@@ -243,13 +243,24 @@ impl TtsSynthesizer {
                 .map(|next| next.start_sec - 0.06)
                 .unwrap_or(cue.end_sec + 2.0);
             let available = (next_start - cue.start_sec).max(cue.end_sec - cue.start_sec);
-            let stretched =
-                if samples.len() as f64 / f64::from(SAMPLE_RATE) > available && available > 0.1 {
-                    let target_len = (available * f64::from(SAMPLE_RATE)).round() as usize;
-                    wsola_time_stretch(samples, target_len, SAMPLE_RATE as usize)
-                } else {
-                    samples.clone()
-                };
+            let stretched = if samples.len() as f64 / f64::from(SAMPLE_RATE) > available
+                && available > 0.1
+            {
+                let target_len = (available * f64::from(SAMPLE_RATE)).round() as usize;
+                let requested_ratio = samples.len() as f64 / target_len as f64;
+                if requested_ratio > MAX_COMPRESSION_RATIO {
+                    emit(
+                        &self.config.event_callback,
+                        TtsEvent::Warning(format!(
+                            "Cue #{} cần nén {:.2}x; giới hạn WSOLA là {:.2}x, phần còn lại sẽ làm dịch các cue sau.",
+                            cue.index, requested_ratio, MAX_COMPRESSION_RATIO
+                        )),
+                    );
+                }
+                wsola_time_stretch(samples, target_len, SAMPLE_RATE as usize)
+            } else {
+                samples.clone()
+            };
 
             let start = cue.start_sec.max(current_end);
             let start_sample = (start * f64::from(SAMPLE_RATE)) as usize;
