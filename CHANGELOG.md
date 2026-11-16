@@ -10,6 +10,7 @@ Các thay đổi đáng chú ý của workspace được ghi tại đây.
 - Thêm parser WebVTT và property tests cho normalizer, DSP, parser.
 - Nhúng `voices_v3_turbo.json` vào crate engine.
 - Thêm `TtsConfig::num_workers`, `AudioBuffer`, WAV encoding trong RAM, thống kê caption lọc và WSOLA.
+- Thêm tùy chọn `--out-dir` cho ví dụ `evaluate_vtt` để lưu WAV nghe thử.
 
 ### Thay đổi
 - Cô lập model inference và dubbing pipeline khỏi các API host `shared`/`cli_gui_form`.

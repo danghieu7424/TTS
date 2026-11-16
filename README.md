@@ -9,6 +9,7 @@ Thư viện Rust có thể nhúng để chuẩn hóa tiếng Việt, xử lý DS
 - Runtime ONNX tương thích với phiên bản `ort` của crate, có thể nạp động; thêm DLL ONNX Runtime vào `PATH` khi chạy inference. DirectML chỉ được chọn khi cấu hình `use_gpu` bật trên Windows.
 - G2P cần binary bridge đã build hoặc Python cùng bridge script. Cấu hình qua `g2p_bridge_path`/`python_path`; bridge đặt trong thư mục model cũng được dò tìm.
 - Thư mục model truyền vào `TtsConfig::new` có thể chứa `v3turbo/` để dùng asset cục bộ; các file còn thiếu được tải từ Hugging Face và lưu trong `model_dir/tts/v3turbo`. Voice presets được đóng gói cùng crate.
+- Windows local evaluation có thể dùng ONNX Runtime 1.22.x tại `Models/onnxruntime.dll` bằng cách đặt `ORT_DYLIB_PATH` trỏ tới DLL và thêm `Models/` vào `PATH`.
 
 ## Dùng thư viện
 
@@ -34,6 +35,16 @@ std::fs::write("dubbed.wav", wav_bytes)?;
 `TTSOutput` trả audio mono PCM16/48 kHz trong `AudioBuffer`, cùng tổng cue, caption bị lọc, cue đã đọc và voice. `AudioBuffer::wav_bytes()` mã hóa WAV trong RAM; chỉ caller quyết định có ghi bytes ra file hay không.
 
 Pipeline dùng hàng đợi động với tối đa bốn worker theo mặc định. Mỗi worker giữ engine ONNX và G2P bridge riêng; `threads` là ngân sách tổng luồng nội suy, được chia cho worker. Cue `line:<n>%` dưới 50% bị loại; cue lỗi cú pháp `line:` vẫn được giữ và phát cảnh báo. Ký tự chữ Hán bị loại trước G2P, phần tiếng Việt và Latin còn lại được đọc.
+
+Để tạo WAV nghe thử từ bốn VTT mẫu trên Windows:
+
+```powershell
+$env:ORT_DYLIB_PATH = (Resolve-Path "Models\onnxruntime.dll").Path
+$env:PATH = (Resolve-Path "Models").Path + ";" + $env:PATH
+cargo run --release -p vieneu-tts --example evaluate_vtt -- --out-dir output
+```
+
+Harness ghi WAV mono PCM16/48 kHz và in thời gian/RTF cho mỗi file. `output/` và `Models/` nằm ngoài Git theo `.gitignore`.
 
 ## Crates và features
 
