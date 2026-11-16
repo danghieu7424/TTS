@@ -1,0 +1,12 @@
+[package]
+name = "vieneu-tts-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+lazy_static = "1"
+regex = "1"
+
+[dev-dependencies]
+proptest.workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "vieneu-tts-engine"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["turbo"]
+turbo = [
+    "dep:hf-hub",
+    "dep:ndarray",
+    "dep:ndarray-npy",
+    "dep:ort",
+    "dep:rand",
+    "dep:rand_distr",
+    "dep:tokenizers",
+]
+nano = ["dep:hf-hub", "dep:ndarray", "dep:ndarray-npy", "dep:ort", "dep:rand", "dep:rand_distr"]
+
+[dependencies]
+anyhow.workspace = true
+hf-hub = { version = "0.4", optional = true }
+ndarray = { version = "0.17", optional = true }
+ndarray-npy = { version = "0.11", optional = true }
+ort = { version = "=2.0.0-rc.10", features = ["directml", "load-dynamic"], optional = true }
+rand = { version = "0.8", optional = true }
+rand_distr = { version = "0.4", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+tokenizers = { version = "0.21", optional = true }
+vieneu-tts-core = { path = "../vieneu-tts-core" }

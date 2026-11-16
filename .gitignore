@@ -1,0 +1,6 @@
+/target
+/Models/
+/input/
+/output/
+/graphify-out/
+.cargo-*/
