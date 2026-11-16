@@ -1,7 +1,8 @@
 # Trạng thái repository
 
-- Kiểm thử: 12 tests qua với `cargo test --workspace`, `cargo test --workspace --all-features` và `cargo test --workspace --no-default-features`.
-- Chất lượng: `cargo fmt --all -- --check` và `cargo clippy --workspace --all-targets -- -D warnings` thành công.
-- Audit: không còn vulnerability; `cargo audit` báo 2 crate bắc cầu chưa được duy trì (`number_prefix`, `paste`).
-- Ràng buộc: inference ONNX cần runtime tương thích và model files bên ngoài; G2P cần bridge ngoài. Feature Nano giữ các atom cũ, facade hiện dùng Turbo.
-- Báo cáo đánh giá thực nghiệm/benchmark: chưa chạy trong phiên này.
+- Phiên bản workspace: `0.3.0`; `Source/`, root `src/` và `plan.md` đã được dọn theo xác nhận.
+- Kiểm thử: 17 tests qua với cấu hình mặc định và `--all-features`; 15 tests qua với `--no-default-features`.
+- Chất lượng: `cargo fmt --all -- --check` và `cargo clippy --workspace --all-targets --all-features -- -D warnings` thành công.
+- Audit: không có vulnerability; `cargo audit` còn 2 cảnh báo dependency bắc cầu chưa được duy trì (`number_prefix`, `paste`), chưa có bản sửa.
+- Ràng buộc: inference yêu cầu ONNX Runtime 1.22.x tương thích; pipeline tạo audio trong RAM nhưng model cache vẫn lưu ở `model_dir`. Bốn worker dùng một bộ ONNX sessions/G2P riêng mỗi worker.
+- Đánh giá VTT mới nhất: [2026-11-16-evaluate.md](docs/reviews/2026-11-16-evaluate.md) — 272 cue, 32 caption bị lọc, RTF tổng 3.4381, peak process-tree working set 2,197.2 MiB; hash input không đổi.

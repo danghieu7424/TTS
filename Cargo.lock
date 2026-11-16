@@ -763,12 +763,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hound"
-version = "3.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
-
-[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2639,17 +2633,16 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vieneu-tts"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
- "hound",
  "vieneu-tts-core",
  "vieneu-tts-engine",
 ]
 
 [[package]]
 name = "vieneu-tts-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -2659,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "vieneu-tts-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "hf-hub",

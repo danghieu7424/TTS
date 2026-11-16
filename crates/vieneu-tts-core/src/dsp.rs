@@ -106,6 +106,70 @@ pub fn f32_to_i16_pcm(samples: &[f32]) -> Vec<i16> {
         .collect()
 }
 
+pub fn wsola_time_stretch(samples: &[f32], target_len: usize, sample_rate: usize) -> Vec<f32> {
+    if samples.is_empty() || target_len == 0 {
+        return Vec::new();
+    }
+    if target_len == samples.len() {
+        return samples.to_vec();
+    }
+    if samples.len() < 2 {
+        return vec![samples[0]; target_len];
+    }
+
+    let window = samples.len().min((sample_rate / 25).max(2));
+    let overlap = (window / 2).max(1);
+    let synthesis_hop = window - overlap;
+    let analysis_hop = synthesis_hop as f64 * samples.len() as f64 / target_len as f64;
+    let search_radius = (sample_rate / 200).min(window / 4);
+    let max_source_start = samples.len() - window;
+    let mut output = vec![0.0; target_len];
+    let first_len = window.min(target_len);
+    output[..first_len].copy_from_slice(&samples[..first_len]);
+
+    let mut output_start = synthesis_hop;
+    let mut expected_source_start = analysis_hop;
+    while output_start < target_len {
+        let expected = expected_source_start.round() as usize;
+        let search_start = expected.saturating_sub(search_radius).min(max_source_start);
+        let search_end = expected.saturating_add(search_radius).min(max_source_start);
+        let mut best_source_start = search_start;
+        let mut best_correlation = f64::NEG_INFINITY;
+
+        for candidate in (search_start..=search_end).step_by(8) {
+            let compared = overlap.min(target_len - output_start);
+            let correlation = (0..compared)
+                .step_by(8)
+                .map(|offset| {
+                    f64::from(output[output_start + offset])
+                        * f64::from(samples[candidate + offset])
+                })
+                .sum::<f64>();
+            if correlation > best_correlation {
+                best_correlation = correlation;
+                best_source_start = candidate;
+            }
+        }
+
+        let segment_len = window.min(target_len - output_start);
+        let crossfade_len = overlap.min(segment_len);
+        for offset in 0..crossfade_len {
+            let blend = offset as f32 / crossfade_len as f32;
+            let current = output[output_start + offset];
+            let incoming = samples[best_source_start + offset];
+            output[output_start + offset] = current * (1.0 - blend) + incoming * blend;
+        }
+        output[output_start + crossfade_len..output_start + segment_len].copy_from_slice(
+            &samples[best_source_start + crossfade_len..best_source_start + segment_len],
+        );
+
+        output_start += synthesis_hop;
+        expected_source_start += analysis_hop;
+    }
+
+    output
+}
+
 /****
  * [FUNCTION]: gentle_lowpass
  * Chức năng: Bộ lọc thông thấp IIR Biquad Butterworth bậc 2 (Cutoff 10.5kHz tại sample rate 24kHz)
@@ -275,6 +339,16 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn wsola_produces_requested_length_and_finite_samples(
+            samples in prop::collection::vec(-1.0f32..1.0, 0..4096),
+            target_len in 0usize..8192,
+        ) {
+            let output = wsola_time_stretch(&samples, target_len, 48_000);
+            prop_assert_eq!(output.len(), if samples.is_empty() { 0 } else { target_len });
+            prop_assert!(output.iter().all(|sample| sample.is_finite()));
+        }
+
         #[test]
         fn filters_keep_finite_samples(
             samples in prop::collection::vec(any::<f32>(), 0..512),

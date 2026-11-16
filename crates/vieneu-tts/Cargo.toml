@@ -2,16 +2,19 @@
 name = "vieneu-tts"
 version.workspace = true
 edition.workspace = true
-description = "Embeddable Vietnamese TTS and subtitle dubbing library"
+license.workspace = true
+description.workspace = true
 
 [features]
-default = ["turbo", "ffmpeg"]
+default = ["turbo"]
 turbo = ["vieneu-tts-engine/turbo"]
 nano = ["vieneu-tts-engine/nano"]
-ffmpeg = []
+
+[[example]]
+name = "evaluate_vtt"
+required-features = ["turbo"]
 
 [dependencies]
 anyhow.workspace = true
-hound = "3"
 vieneu-tts-core = { path = "../vieneu-tts-core" }
 vieneu-tts-engine = { path = "../vieneu-tts-engine", default-features = false }

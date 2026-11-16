@@ -6,13 +6,16 @@ Các thay đổi đáng chú ý của workspace được ghi tại đây.
 
 ### Thêm
 - Thêm workspace với các crates `vieneu-tts-core`, `vieneu-tts-engine` và facade `vieneu-tts`.
-- Thêm API cấu hình cho model path, số luồng, DirectML, G2P, FFmpeg và callback sự kiện.
+- Thêm API cấu hình cho model path, số worker/luồng, DirectML, G2P và callback sự kiện.
 - Thêm parser WebVTT và property tests cho normalizer, DSP, parser.
 - Nhúng `voices_v3_turbo.json` vào crate engine.
+- Thêm `TtsConfig::num_workers`, `AudioBuffer`, WAV encoding trong RAM, thống kê caption lọc và WSOLA.
 
 ### Thay đổi
 - Cô lập model inference và dubbing pipeline khỏi các API host `shared`/`cli_gui_form`.
-- Đưa các module v3-Nano vào feature `nano`; đưa FFmpeg atempo vào feature tùy chọn `ffmpeg`.
+- `parse_vtt_with_stats` lọc cue `line:<n>%` dưới 50%; pipeline loại chữ Hán trước G2P.
+- Dùng hàng đợi cue động với tối đa bốn worker ONNX/G2P, gom kết quả theo thứ tự cue.
+- Đưa các module v3-Nano vào feature `nano`; time-stretch chuyển sang WSOLA trong RAM.
 
 ### Sửa
 - Xử lý an toàn sample rate không hợp lệ và giá trị NaN/Inf trong bộ lọc DSP.
@@ -20,8 +23,11 @@ Các thay đổi đáng chú ý của workspace được ghi tại đây.
 - Nâng `ndarray-npy` để dùng `zip` đã vá các advisory hiện hành.
 
 ### Gỡ bỏ
+- Bỏ FFmpeg và các file WAV trung gian khỏi pipeline dubbing.
 
 ### Bảo mật
 
 ### Thay đổi phá vỡ tương thích
 - API cũ trong `Source/TTS` chưa được giữ làm API tương thích; facade mới dùng `TtsConfig` và `TtsSynthesizer`.
+- `TtsSynthesizer::synthesize_dubbed_audio` không còn nhận `tmp_dir`/`force_tts`; kết quả audio được trả trong `TTSOutput::audio`.
+- Bỏ `TtsConfig::ffmpeg_path`; `threads` là ngân sách tổng được chia giữa các worker.

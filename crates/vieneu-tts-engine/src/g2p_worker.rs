@@ -65,8 +65,9 @@ impl G2pWorker {
 
         for b_path in &bridge_cands {
             if b_path.exists() {
-                let mut cmd = Command::new(b_path);
-                if let Some(parent) = b_path.parent() {
+                let absolute_path = std::fs::canonicalize(b_path)?;
+                let mut cmd = Command::new(&absolute_path);
+                if let Some(parent) = absolute_path.parent() {
                     cmd.current_dir(parent);
                 }
                 if let Ok(mut child) = cmd

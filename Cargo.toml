@@ -7,8 +7,10 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Vietnamese text-to-speech and subtitle dubbing library"
 
 [workspace.dependencies]
 anyhow = "1"
