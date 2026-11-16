@@ -1,9 +1,9 @@
 [package]
 name = "vieneu-tts"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description.workspace = true
+version = "0.3.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Vietnamese text-to-speech and subtitle dubbing library"
 
 [features]
 default = ["turbo"]
@@ -19,6 +19,6 @@ name = "debug_noise"
 required-features = ["turbo"]
 
 [dependencies]
-anyhow.workspace = true
+anyhow = "1"
 vieneu-tts-core = { path = "../vieneu-tts-core" }
 vieneu-tts-engine = { path = "../vieneu-tts-engine", default-features = false }
